@@ -17,6 +17,7 @@ import { handleLogHabitCallback, handleLogDateCallback, getPendingHabitLog } fro
 import { handleLogHabitText, isAwaitingHabitLog } from './handlers/logHabitText';
 import { handleCustomDateInput } from './handlers/logCustomDate';
 import { testReminderCommand } from './commands/testReminder';
+import { getMenuCommandFromText } from './i18n';
 
 const lastCallbackByUser = new Map<number, { data: string; at: number }>();
 
@@ -74,9 +75,31 @@ export function createBot() {
     }
   });
 
-  // Handle text messages (for habit name input or habit logging)
+  // Handle text messages (menu buttons, habit name input, or habit logging)
   bot.on('text', async (ctx, next) => {
     const telegramId = ctx.from?.id;
+    const text = (ctx.message as { text?: string })?.text?.trim();
+
+    if (telegramId && text) {
+      const menuCommand = getMenuCommandFromText(ctx, text);
+      if (menuCommand === 'add_habit') {
+        await addHabitCommand(ctx);
+        return;
+      }
+      if (menuCommand === 'view_habits') {
+        await viewHabitsCommand(ctx);
+        return;
+      }
+      if (menuCommand === 'log_habit') {
+        await logHabitCommand(ctx);
+        return;
+      }
+      if (menuCommand === 'stats') {
+        await statsCommand(ctx);
+        return;
+      }
+    }
+
     if (telegramId && isAwaitingHabitName(telegramId)) {
       await handleHabitNameInput(ctx);
     } else if (telegramId && isAwaitingTargetMonth(telegramId)) {

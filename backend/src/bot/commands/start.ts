@@ -1,6 +1,7 @@
 import { Context } from 'telegraf';
 import { database } from '../../database';
 import { config } from '../../config';
+import { getStartWelcome, getStartKeyboard, getUnableToIdentifyUser, getLocale, getSpecialDisplayName } from '../i18n';
 
 export async function startCommand(ctx: Context) {
   const telegramId = ctx.from?.id;
@@ -8,10 +9,10 @@ export async function startCommand(ctx: Context) {
   const lastName = ctx.from?.last_name;
   const username = ctx.from?.username;
 
-  const displayName = username === 'darvolu' ? 'My beautiful princess ❤️' : firstName;
-  console.log(displayName)
+  const displayName = username === 'darvolu' ? getSpecialDisplayName(ctx) : firstName;
+
   if (!telegramId) {
-    return ctx.reply('Unable to identify user.');
+    return ctx.reply(getUnableToIdentifyUser(ctx));
   }
 
   // Check if user exists, if not create
@@ -30,20 +31,13 @@ export async function startCommand(ctx: Context) {
     console.log(`New user created: ${telegramId} (${firstName})`);
   }
 
-  const welcomeMessage = `👋 Welcome to Habit Pulse, ${displayName}!
-
-I'll help you track your daily habits and stay consistent.
-
-📝 Available commands:
-/add_habit - Create a new habit
-/view_habits - See all your habits
-/log_habit - Log a habit for today
-/stats - View your statistics
-
-Let's build better habits together! 💪`;
+  const welcomeMessage = getStartWelcome(ctx, displayName);
+  const keyboard = getStartKeyboard(getLocale(ctx));
 
   try {
-    const result = await ctx.reply(welcomeMessage);
+    const result = await ctx.reply(welcomeMessage, {
+      reply_markup: keyboard,
+    });
     console.log('✅ /start reply sent:', result?.message_id);
   } catch (error) {
     console.error('❌ /start reply failed:', error);
