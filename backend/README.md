@@ -83,3 +83,27 @@ backend/
 - `npm run dev` - Start with hot reload
 - `npm run build` - Build TypeScript
 - `npm run type-check` - Check types without building
+
+### Local development with a separate dev bot (recommended)
+
+Use a **second bot** for local development so the production bot and webhook are never touched.
+
+1. **Create a dev bot in Telegram**
+   - Open [@BotFather](https://t.me/BotFather)
+   - Send `/newbot` and follow the prompts (e.g. name: "Habit Pulse Dev", username: "YourBotName_dev_bot")
+   - Copy the **dev** bot token
+
+2. **Use the dev token only in your local `.env`**
+   - In `backend/.env`, set `BOT_TOKEN` to the **dev** bot token (not the production one)
+   - Leave `WEBHOOK_URL` empty or omit it so the app uses polling locally
+   - Keep `NODE_ENV=development`
+
+3. **Run locally**
+   ```bash
+   npm run dev
+   ```
+   You’ll see "Running in polling mode (development)". All messages to the **dev** bot go to your local app.
+
+4. **Production stays unchanged**
+   - Deployed app keeps using the **production** `BOT_TOKEN` and `WEBHOOK_URL` in its environment
+   - No need to redeploy or reset the webhook after local testing

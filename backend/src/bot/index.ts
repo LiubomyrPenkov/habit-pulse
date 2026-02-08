@@ -17,7 +17,7 @@ import { handleLogHabitCallback, handleLogDateCallback, getPendingHabitLog } fro
 import { handleLogHabitText, isAwaitingHabitLog } from './handlers/logHabitText';
 import { handleCustomDateInput } from './handlers/logCustomDate';
 import { testReminderCommand } from './commands/testReminder';
-import { getMenuCommandFromText } from './i18n';
+import { getMenuCommandFromText, getErrorOccurred } from './i18n';
 
 const lastCallbackByUser = new Map<number, { data: string; at: number }>();
 
@@ -122,7 +122,7 @@ export function createBot() {
   // Error handling
   bot.catch((err, ctx) => {
     console.error('Bot error:', err);
-    ctx.reply('Sorry, an error occurred. Please try again later.');
+    ctx.reply(getErrorOccurred(ctx));
   });
 
   return bot;

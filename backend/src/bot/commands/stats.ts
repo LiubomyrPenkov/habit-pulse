@@ -1,5 +1,7 @@
 import { Context } from 'telegraf';
 import { database } from '../../database';
+import { getMessage, tLocale, getLocale, getUnableToIdentifyUser, getPleaseUseStartFirst, getUserNotFound, getCommonError } from '../i18n';
+import type { Locale } from '../i18n';
 
 function capitalizeFirstLetter(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -39,11 +41,11 @@ async function safeEditMessageText(ctx: Context, message: string, keyboard: any)
   } catch (error: any) {
     const description = error?.description || error?.message || '';
     if (description.includes('message is not modified')) {
-      await ctx.answerCbQuery('Already on current view');
+      await ctx.answerCbQuery(getMessage(ctx, 'stats_alreadyOnCurrentView'));
       return;
     }
     console.error('Failed to edit stats message:', error);
-    await ctx.answerCbQuery('Unable to update stats');
+    await ctx.answerCbQuery(getMessage(ctx, 'stats_unableToUpdate'));
   }
 }
 
@@ -80,20 +82,22 @@ function setSelectedHabit(telegramId: number, habitId: string | undefined) {
   }
 }
 
-function generateCalendarView(logs: any[], year: number, month: number): string {
-  // Get all logged dates
+function generateCalendarView(logs: any[], year: number, month: number, locale: Locale): string {
   const loggedDates = new Set(
     logs.map((log) => getDateOnly(log.timestamp))
   );
 
-  // Get first day of month and number of days
   const firstDay = new Date(Date.UTC(year, month, 1));
   const lastDay = new Date(Date.UTC(year, month + 1, 0));
   const daysInMonth = lastDay.getUTCDate();
   const startingDayOfWeek = firstDay.getUTCDay();
 
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  const monthNames = locale === 'uk'
+    ? ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру']
+    : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const dayNames = locale === 'uk'
+    ? ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']
+    : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
   let calendar = `<pre>🗓 ${monthNames[month]} ${year}\n`;
   calendar += dayNames.join(' ') + '\n';
@@ -127,15 +131,13 @@ function generateCalendarView(logs: any[], year: number, month: number): string 
   return calendar;
 }
 
-async function buildStatsMessage(userId: any, telegramId: number, habits: any[], habitId?: any) {
+async function buildStatsMessage(userId: any, telegramId: number, habits: any[], locale: Locale, habitId?: any) {
   const monthView = getCurrentMonthView(telegramId);
 
-  let message = '📊 Your Statistics:\n\n';
+  let message = tLocale(locale, 'stats_yourStatistics') + '\n\n';
 
-  // Filter habits if habitId is provided
   const habitsToShow = habitId ? habits.filter(h => h._id.toString() === habitId.toString()) : habits;
 
-  // Add calendar for each habit
   for (const habit of habitsToShow) {
     const logs = await database.dailyLogs
       .find({ habitId: habit._id, userId })
@@ -145,25 +147,24 @@ async function buildStatsMessage(userId: any, telegramId: number, habits: any[],
     message += `<b>${habit.name}:</b>\n`;
 
     if (logs.length === 0) {
-      message += 'No logs yet for this habit.\nUse /log_habit to start tracking!\n';
+      message += tLocale(locale, 'stats_noLogsYet') + '\n';
       message += '─────\n\n';
       continue;
     }
 
-    // Count logs for this month and year
     const logsThisMonth = logs.filter(log => isDateInMonth(log.timestamp, monthView.year, monthView.month));
     const logsThisYear = logs.filter(log => isDateInYear(log.timestamp, monthView.year));
 
-    message += generateCalendarView(logs, monthView.year, monthView.month) + '\n';
-    message += `<b>Total this month: ${logsThisMonth.length}</b>\n`;
-    message += `<b>Total this year: ${logsThisYear.length}</b>\n`;
+    message += generateCalendarView(logs, monthView.year, monthView.month, locale) + '\n';
+    message += `<b>${tLocale(locale, 'stats_totalThisMonth')} ${logsThisMonth.length}</b>\n`;
+    message += `<b>${tLocale(locale, 'stats_totalThisYear')} ${logsThisYear.length}</b>\n`;
     message += '─────\n\n';
   }
 
   return message;
 }
 
-function getNavigationKeyboard(telegramId: number) {
+function getNavigationKeyboard(telegramId: number, locale: Locale) {
   const monthView = getCurrentMonthView(telegramId);
   const prevDate = new Date(Date.UTC(monthView.year, monthView.month - 1, 1));
   const nextDate = new Date(Date.UTC(monthView.year, monthView.month + 1, 1));
@@ -172,15 +173,15 @@ function getNavigationKeyboard(telegramId: number) {
     inline_keyboard: [
       [
         {
-          text: '◀️ Prev',
+          text: tLocale(locale, 'stats_prev'),
           callback_data: `stats_prev_${telegramId}_${prevDate.getUTCFullYear()}_${prevDate.getUTCMonth()}`,
         },
         {
-          text: 'Today',
+          text: tLocale(locale, 'stats_today'),
           callback_data: `stats_today_${telegramId}`,
         },
         {
-          text: 'Next ▶️',
+          text: tLocale(locale, 'stats_next'),
           callback_data: `stats_next_${telegramId}_${nextDate.getUTCFullYear()}_${nextDate.getUTCMonth()}`,
         },
       ],
@@ -188,7 +189,7 @@ function getNavigationKeyboard(telegramId: number) {
   };
 }
 
-function getHabitSelectionKeyboard(telegramId: number, habits: any[]) {
+function getHabitSelectionKeyboard(telegramId: number, habits: any[], locale: Locale) {
   const buttons = habits.map(habit => [
     {
       text: capitalizeFirstLetter(habit.name),
@@ -196,10 +197,9 @@ function getHabitSelectionKeyboard(telegramId: number, habits: any[]) {
     },
   ]);
 
-  // Add "All Habits" button at the end
   buttons.push([
     {
-      text: '📊 All Habits',
+      text: tLocale(locale, 'stats_allHabits'),
       callback_data: `stats_habit_${telegramId}_all`,
     },
   ]);
@@ -211,36 +211,35 @@ function getHabitSelectionKeyboard(telegramId: number, habits: any[]) {
 
 export async function statsCommand(ctx: Context) {
   const telegramId = ctx.from?.id;
+  const locale = getLocale(ctx);
 
   if (!telegramId) {
-    return ctx.reply('Unable to identify user.');
+    return ctx.reply(getUnableToIdentifyUser(ctx));
   }
 
   const user = await database.users.findOne({ telegramId });
 
   if (!user || !user._id) {
-    return ctx.reply('Please use /start first to register.');
+    return ctx.reply(getPleaseUseStartFirst(ctx));
   }
 
   const habits = await database.habits.find({ userId: user._id }).toArray();
 
   if (habits.length === 0) {
-    return ctx.reply('You don\'t have any habits yet. Use /add_habit to create one!');
+    return ctx.reply(getMessage(ctx, 'viewHabits_noHabitsYet'));
   }
 
-  // If only one habit, show stats directly
   if (habits.length === 1) {
-    const message = await buildStatsMessage(user._id, telegramId, habits);
-    const keyboard = getNavigationKeyboard(telegramId);
+    const message = await buildStatsMessage(user._id, telegramId, habits, locale);
+    const keyboard = getNavigationKeyboard(telegramId, locale);
 
     await ctx.reply(message, {
       parse_mode: 'HTML',
       reply_markup: keyboard,
     });
   } else {
-    // Show habit selection buttons
-    const keyboard = getHabitSelectionKeyboard(telegramId, habits);
-    await ctx.reply('📊 Select a habit to view stats:', {
+    const keyboard = getHabitSelectionKeyboard(telegramId, habits, locale);
+    await ctx.reply(getMessage(ctx, 'stats_selectHabitToViewStats'), {
       reply_markup: keyboard,
     });
   }
@@ -249,12 +248,12 @@ export async function statsCommand(ctx: Context) {
 export async function handleStatsNavigation(ctx: Context) {
   const callbackData = (ctx.callbackQuery as any)?.data;
   const telegramId = ctx.from?.id;
+  const locale = getLocale(ctx);
 
   if (!callbackData || !telegramId) {
-    return ctx.answerCbQuery('Error');
+    return ctx.answerCbQuery(getCommonError(ctx));
   }
 
-  // Handle habit selection
   if (callbackData.startsWith('stats_habit_')) {
     const parts = callbackData.split('_');
     const habitId = parts[3];
@@ -262,18 +261,18 @@ export async function handleStatsNavigation(ctx: Context) {
 
     const user = await database.users.findOne({ telegramId });
     if (!user || !user._id) {
-      return ctx.answerCbQuery('User not found');
+      return ctx.answerCbQuery(getUserNotFound(ctx));
     }
 
     const habits = await database.habits.find({ userId: user._id }).toArray();
     if (habits.length === 0) {
-      return ctx.answerCbQuery('No habits found');
+      return ctx.answerCbQuery(getMessage(ctx, 'stats_noHabitsFound'));
     }
 
     const selectedHabit = isAll ? undefined : habitId;
     setSelectedHabit(telegramId, selectedHabit);
-    const message = await buildStatsMessage(user._id, telegramId, habits, selectedHabit);
-    const keyboard = getNavigationKeyboard(telegramId);
+    const message = await buildStatsMessage(user._id, telegramId, habits, locale, selectedHabit);
+    const keyboard = getNavigationKeyboard(telegramId, locale);
 
     await safeEditMessageText(ctx, message, keyboard);
     await ctx.answerCbQuery();
@@ -296,21 +295,19 @@ export async function handleStatsNavigation(ctx: Context) {
     setMonthView(telegramId, year, month);
   }
 
-  // Refresh stats message
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.answerCbQuery('User not found');
+    return ctx.answerCbQuery(getUserNotFound(ctx));
   }
 
   const habits = await database.habits.find({ userId: user._id }).toArray();
   if (habits.length === 0) {
-    return ctx.answerCbQuery('No habits found');
+    return ctx.answerCbQuery(getMessage(ctx, 'stats_noHabitsFound'));
   }
 
-  // Use the selected habit if available
   const selectedHabit = getSelectedHabit(telegramId);
-  const message = await buildStatsMessage(user._id, telegramId, habits, selectedHabit);
-  const keyboard = getNavigationKeyboard(telegramId);
+  const message = await buildStatsMessage(user._id, telegramId, habits, locale, selectedHabit);
+  const keyboard = getNavigationKeyboard(telegramId, locale);
 
   await safeEditMessageText(ctx, message, keyboard);
   await ctx.answerCbQuery();
@@ -319,9 +316,10 @@ export async function handleStatsNavigation(ctx: Context) {
 export async function handleViewHabitStats(ctx: Context) {
   const callbackData = (ctx.callbackQuery as any)?.data;
   const telegramId = ctx.from?.id;
+  const locale = getLocale(ctx);
 
   if (!callbackData || !telegramId) {
-    return ctx.answerCbQuery('Error');
+    return ctx.answerCbQuery(getCommonError(ctx));
   }
 
   const parts = callbackData.split('_');
@@ -329,17 +327,17 @@ export async function handleViewHabitStats(ctx: Context) {
 
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.answerCbQuery('User not found');
+    return ctx.answerCbQuery(getUserNotFound(ctx));
   }
 
   const habits = await database.habits.find({ userId: user._id }).toArray();
   if (habits.length === 0) {
-    return ctx.answerCbQuery('No habits found');
+    return ctx.answerCbQuery(getMessage(ctx, 'stats_noHabitsFound'));
   }
 
   setSelectedHabit(telegramId, habitId);
-  const message = await buildStatsMessage(user._id, telegramId, habits, habitId);
-  const keyboard = getNavigationKeyboard(telegramId);
+  const message = await buildStatsMessage(user._id, telegramId, habits, locale, habitId);
+  const keyboard = getNavigationKeyboard(telegramId, locale);
 
   await safeEditMessageText(ctx, message, keyboard);
   await ctx.answerCbQuery();

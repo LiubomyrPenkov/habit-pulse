@@ -1,5 +1,6 @@
 import { Context } from 'telegraf';
 import { database } from '../../database';
+import { getMessage, getUnableToIdentifyUser, getPleaseUseStartFirst, getUserNotFound, getHabitNotFound, getCommonError } from '../i18n';
 
 function capitalizeFirstLetter(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -28,19 +29,19 @@ export async function viewHabitsCommand(ctx: Context) {
   const telegramId = ctx.from?.id;
 
   if (!telegramId) {
-    return ctx.reply('Unable to identify user.');
+    return ctx.reply(getUnableToIdentifyUser(ctx));
   }
 
   const user = await database.users.findOne({ telegramId });
 
   if (!user || !user._id) {
-    return ctx.reply('Please use /start first to register.');
+    return ctx.reply(getPleaseUseStartFirst(ctx));
   }
 
   const habits = await database.habits.find({ userId: user._id }).toArray();
 
   if (habits.length === 0) {
-    return ctx.reply('You don\'t have any habits yet. Use /add_habit to create one!');
+    return ctx.reply(getMessage(ctx, 'viewHabits_noHabitsYet'));
   }
 
   // Create buttons for each habit
@@ -55,7 +56,7 @@ export async function viewHabitsCommand(ctx: Context) {
     inline_keyboard: buttons,
   };
 
-  await ctx.reply('📋 Select a habit to view details:', {
+  await ctx.reply(getMessage(ctx, 'viewHabits_selectToViewDetails'), {
     reply_markup: keyboard,
   });
 }
@@ -73,7 +74,7 @@ export async function handleViewHabitCallback(ctx: Context) {
 
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.answerCbQuery('User not found');
+    return ctx.answerCbQuery(getUserNotFound(ctx));
   }
 
   const habit = await database.habits.findOne({
@@ -82,7 +83,7 @@ export async function handleViewHabitCallback(ctx: Context) {
   });
 
   if (!habit) {
-    return ctx.answerCbQuery('Habit not found');
+    return ctx.answerCbQuery(getHabitNotFound(ctx));
   }
 
   // Get last log
@@ -93,42 +94,28 @@ export async function handleViewHabitCallback(ctx: Context) {
     );
 
   const createdDate = formatDate(habit.createdAt);
-  const lastLogDate = lastLog ? formatDate(lastLog.timestamp) : 'Never';
-
-  const targetPerMonth = habit.targetPerMonth || 'Not set';
-  const targetPerYear = habit.targetPerYear || 'Not set';
+  const lastLogDate = lastLog ? formatDate(lastLog.timestamp) : getMessage(ctx, 'viewHabits_never');
+  const targetPerMonth = habit.targetPerMonth ?? getMessage(ctx, 'viewHabits_notSet');
+  const targetPerYear = habit.targetPerYear ?? getMessage(ctx, 'viewHabits_notSet');
 
   let message = `<b>${capitalizeFirstLetter(habit.name)}</b>\n\n`;
-  message += `Created: ${createdDate}\n`;
-  message += `Last logged: ${lastLogDate}\n\n`;
-  message += `<b>Targets:</b>\n`;
-  message += `Per month: ${targetPerMonth}\n`;
-  message += `Per year: ${targetPerYear}\n`;
-  
+  message += `${getMessage(ctx, 'viewHabits_created')} ${createdDate}\n`;
+  message += `${getMessage(ctx, 'viewHabits_lastLogged')} ${lastLogDate}\n\n`;
+  message += `<b>${getMessage(ctx, 'viewHabits_targets')}</b>\n`;
+  message += `${getMessage(ctx, 'viewHabits_perMonth')} ${targetPerMonth}\n`;
+  message += `${getMessage(ctx, 'viewHabits_perYear')} ${targetPerYear}\n`;
 
   const keyboard = {
     inline_keyboard: [
       [
-        {
-          text: '📊 View Stats',
-          callback_data: `view_stats_${telegramId}_${habitId}`,
-        },
+        { text: getMessage(ctx, 'viewHabits_viewStats'), callback_data: `view_stats_${telegramId}_${habitId}` },
       ],
       [
-        {
-          text: '📊 Set Monthly Target',
-          callback_data: `set_month_target_${telegramId}_${habitId}`,
-        },
-        {
-          text: '📈 Set Yearly Target',
-          callback_data: `set_year_target_${telegramId}_${habitId}`,
-        },
+        { text: getMessage(ctx, 'viewHabits_setMonthlyTargetBtn'), callback_data: `set_month_target_${telegramId}_${habitId}` },
+        { text: getMessage(ctx, 'viewHabits_setYearlyTargetBtn'), callback_data: `set_year_target_${telegramId}_${habitId}` },
       ],
       [
-        {
-          text: '🗑 Remove Habit',
-          callback_data: `remove_habit_${telegramId}_${habitId}`,
-        },
+        { text: getMessage(ctx, 'viewHabits_removeHabit'), callback_data: `remove_habit_${telegramId}_${habitId}` },
       ],
     ],
   };
@@ -145,7 +132,7 @@ export async function handleSetTargetCallback(ctx: Context) {
   const telegramId = ctx.from?.id;
 
   if (!callbackData || !telegramId) {
-    return ctx.answerCbQuery('Error');
+    return ctx.answerCbQuery(getCommonError(ctx));
   }
 
   const parts = callbackData.split('_');
@@ -154,7 +141,7 @@ export async function handleSetTargetCallback(ctx: Context) {
 
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.answerCbQuery('User not found');
+    return ctx.answerCbQuery(getUserNotFound(ctx));
   }
 
   const habit = await database.habits.findOne({
@@ -163,21 +150,21 @@ export async function handleSetTargetCallback(ctx: Context) {
   });
 
   if (!habit) {
-    return ctx.answerCbQuery('Habit not found');
+    return ctx.answerCbQuery(getHabitNotFound(ctx));
   }
 
   if (targetType === 'month') {
     awaitingMonthTargetUpdate.set(telegramId, habitId);
     await ctx.answerCbQuery();
     await ctx.editMessageText(
-      `Set monthly target for <b>${capitalizeFirstLetter(habit.name)}</b>\n\nHow many times per month?\n\nSend a number or "0" to remove the target.`,
+      getMessage(ctx, 'viewHabits_setMonthlyTargetFor', { habitName: capitalizeFirstLetter(habit.name) }),
       { parse_mode: 'HTML' }
     );
   } else if (targetType === 'year') {
     awaitingYearTargetUpdate.set(telegramId, habitId);
     await ctx.answerCbQuery();
     await ctx.editMessageText(
-      `Set yearly target for <b>${capitalizeFirstLetter(habit.name)}</b>\n\nHow many times per year?\n\nSend a number or "0" to remove the target.`,
+      getMessage(ctx, 'viewHabits_setYearlyTargetFor', { habitName: capitalizeFirstLetter(habit.name) }),
       { parse_mode: 'HTML' }
     );
   }
@@ -199,12 +186,12 @@ export async function handleMonthTargetUpdate(ctx: Context) {
 
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.reply('User not found.');
+    return ctx.reply(getUserNotFound(ctx));
   }
 
   const target = parseInt(input);
   if (isNaN(target) || target < 0) {
-    return ctx.reply('Please enter a valid number (0 or higher).');
+    return ctx.reply(getMessage(ctx, 'viewHabits_validNumberZeroOrHigher'));
   }
 
   const habit = await database.habits.findOne({
@@ -214,7 +201,7 @@ export async function handleMonthTargetUpdate(ctx: Context) {
 
   if (!habit) {
     awaitingMonthTargetUpdate.delete(telegramId);
-    return ctx.reply('Habit not found.');
+    return ctx.reply(getHabitNotFound(ctx));
   }
 
   // Update habit
@@ -230,9 +217,9 @@ export async function handleMonthTargetUpdate(ctx: Context) {
 
   awaitingMonthTargetUpdate.delete(telegramId);
 
-  const targetMsg = target === 0 ? 'removed' : `set to ${target}`;
+  const targetMsg = target === 0 ? getMessage(ctx, 'viewHabits_targetRemoved') : getMessage(ctx, 'viewHabits_targetSetTo', { n: target });
   await ctx.reply(
-    `✅ Monthly target for "${capitalizeFirstLetter(habit.name)}" ${targetMsg}!\n\nUse /view_habits to see updated details.`
+    getMessage(ctx, 'viewHabits_monthlyTargetUpdated', { habitName: capitalizeFirstLetter(habit.name), targetMsg })
   );
 }
 
@@ -252,12 +239,12 @@ export async function handleYearTargetUpdate(ctx: Context) {
 
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.reply('User not found.');
+    return ctx.reply(getUserNotFound(ctx));
   }
 
   const target = parseInt(input);
   if (isNaN(target) || target < 0) {
-    return ctx.reply('Please enter a valid number (0 or higher).');
+    return ctx.reply(getMessage(ctx, 'viewHabits_validNumberZeroOrHigher'));
   }
 
   const habit = await database.habits.findOne({
@@ -267,7 +254,7 @@ export async function handleYearTargetUpdate(ctx: Context) {
 
   if (!habit) {
     awaitingYearTargetUpdate.delete(telegramId);
-    return ctx.reply('Habit not found.');
+    return ctx.reply(getHabitNotFound(ctx));
   }
 
   // Update habit
@@ -283,9 +270,9 @@ export async function handleYearTargetUpdate(ctx: Context) {
 
   awaitingYearTargetUpdate.delete(telegramId);
 
-  const targetMsg = target === 0 ? 'removed' : `set to ${target}`;
+  const targetMsg = target === 0 ? getMessage(ctx, 'viewHabits_targetRemoved') : getMessage(ctx, 'viewHabits_targetSetTo', { n: target });
   await ctx.reply(
-    `✅ Yearly target for "${capitalizeFirstLetter(habit.name)}" ${targetMsg}!\n\nUse /view_habits to see updated details.`
+    getMessage(ctx, 'viewHabits_yearlyTargetUpdated', { habitName: capitalizeFirstLetter(habit.name), targetMsg })
   );
 }
 
@@ -294,7 +281,7 @@ export async function handleRemoveHabitCallback(ctx: Context) {
   const telegramId = ctx.from?.id;
 
   if (!callbackData || !telegramId) {
-    return ctx.answerCbQuery('Error');
+    return ctx.answerCbQuery(getCommonError(ctx));
   }
 
   const parts = callbackData.split('_');
@@ -302,7 +289,7 @@ export async function handleRemoveHabitCallback(ctx: Context) {
 
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.answerCbQuery('User not found');
+    return ctx.answerCbQuery(getUserNotFound(ctx));
   }
 
   const habit = await database.habits.findOne({
@@ -311,7 +298,7 @@ export async function handleRemoveHabitCallback(ctx: Context) {
   });
 
   if (!habit) {
-    return ctx.answerCbQuery('Habit not found');
+    return ctx.answerCbQuery(getHabitNotFound(ctx));
   }
 
   await database.dailyLogs.deleteMany({ habitId: habit._id, userId: user._id });
@@ -326,6 +313,6 @@ export async function handleRemoveHabitCallback(ctx: Context) {
 
   await ctx.answerCbQuery();
   await ctx.editMessageText(
-    `🗑 Habit "${capitalizeFirstLetter(habit.name)}" removed.\n\nUse /view_habits to see remaining habits.`
+    getMessage(ctx, 'viewHabits_habitRemoved', { habitName: capitalizeFirstLetter(habit.name) })
   );
 }

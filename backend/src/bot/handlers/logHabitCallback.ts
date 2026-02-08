@@ -1,6 +1,7 @@
 import { Context } from 'telegraf';
 import { ObjectId } from 'mongodb';
 import { database } from '../../database';
+import { getMessage, getUnableToIdentifyUser, getUserNotFound, getHabitNotFound, getCommonError } from '../i18n';
 
 // Store habit selection for date input
 const pendingHabitLog = new Map<number, string>();
@@ -28,13 +29,13 @@ export async function handleLogHabitCallback(ctx: Context) {
   const telegramId = ctx.from?.id;
 
   if (!telegramId) {
-    return ctx.answerCbQuery('Unable to identify user.');
+    return ctx.answerCbQuery(getUnableToIdentifyUser(ctx));
   }
 
   const user = await database.users.findOne({ telegramId });
 
   if (!user || !user._id) {
-    return ctx.answerCbQuery('User not found.');
+    return ctx.answerCbQuery(getUserNotFound(ctx));
   }
 
   try {
@@ -44,7 +45,7 @@ export async function handleLogHabitCallback(ctx: Context) {
     });
 
     if (!habit) {
-      return ctx.answerCbQuery('Habit not found.');
+      return ctx.answerCbQuery(getHabitNotFound(ctx));
     }
 
     // Store habit selection and show date options
@@ -53,21 +54,15 @@ export async function handleLogHabitCallback(ctx: Context) {
     const keyboard = {
       inline_keyboard: [
         [
-          {
-            text: '📅 Today',
-            callback_data: `logdate_today_${habitId}`,
-          },
-          {
-            text: '📆 Custom Date',
-            callback_data: `logdate_custom_${habitId}`,
-          },
+          { text: getMessage(ctx, 'log_today'), callback_data: `logdate_today_${habitId}` },
+          { text: getMessage(ctx, 'log_customDate'), callback_data: `logdate_custom_${habitId}` },
         ],
       ],
     };
 
     await ctx.answerCbQuery();
     await ctx.editMessageText(
-      `📊 <b>${habit.name}</b>\n\nWhen do you want to log this habit?`,
+      `📊 <b>${habit.name}</b>\n\n${getMessage(ctx, 'log_whenToLog')}`,
       {
         parse_mode: 'HTML',
         reply_markup: keyboard,
@@ -75,7 +70,7 @@ export async function handleLogHabitCallback(ctx: Context) {
     );
   } catch (error) {
     console.error('Error in habit selection:', error);
-    await ctx.answerCbQuery('Error selecting habit.');
+    await ctx.answerCbQuery(getMessage(ctx, 'log_errorSelectingHabit'));
   }
 }
 
@@ -84,12 +79,12 @@ export async function handleLogDateCallback(ctx: Context) {
   const telegramId = ctx.from?.id;
 
   if (!callbackData || !telegramId) {
-    return ctx.answerCbQuery('Error');
+    return ctx.answerCbQuery(getCommonError(ctx));
   }
 
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.answerCbQuery('User not found');
+    return ctx.answerCbQuery(getUserNotFound(ctx));
   }
 
   const parts = callbackData.split('_');
@@ -103,7 +98,7 @@ export async function handleLogDateCallback(ctx: Context) {
     });
 
     if (!habit) {
-      return ctx.answerCbQuery('Habit not found.');
+      return ctx.answerCbQuery(getHabitNotFound(ctx));
     }
 
     if (dateType === 'today') {
@@ -124,10 +119,8 @@ export async function handleLogDateCallback(ctx: Context) {
       });
 
       if (existingLog) {
-            await ctx.answerCbQuery('Already logged today.');
-        return ctx.editMessageText(
-              `⚠️ "${habit.name}" was already logged today.\n\nUse /log_habit to log another habit.`
-        );
+        await ctx.answerCbQuery(getMessage(ctx, 'log_alreadyLoggedTodayShort'));
+        return ctx.editMessageText(getMessage(ctx, 'log_alreadyLoggedToday', { habitName: habit.name }));
       }
 
       await database.dailyLogs.insertOne({
@@ -139,20 +132,17 @@ export async function handleLogDateCallback(ctx: Context) {
 
       clearPendingHabitLog(telegramId);
 
-      await ctx.answerCbQuery('Logged successfully! 🎉');
-      await ctx.editMessageText(
-        `✅ Logged "${habit.name}" for today!\n\nGreat job staying consistent! 💪\n\nUse /log_habit to log another habit or /stats to see your progress.`
-      );
+      await ctx.answerCbQuery(getMessage(ctx, 'log_loggedSuccess'));
+      await ctx.editMessageText(getMessage(ctx, 'log_loggedForTodayMessage', { habitName: habit.name }));
     } else if (dateType === 'custom') {
-      // Ask for custom date
       await ctx.answerCbQuery();
       await ctx.editMessageText(
-        `📅 Enter the date for <b>${habit.name}</b>\n\nFormat: DD.MM.YYYY (e.g., 01.02.2026)\n\nOr send "cancel" to go back.`,
+        getMessage(ctx, 'log_enterDateCustom', { habitName: habit.name }),
         { parse_mode: 'HTML' }
       );
     }
   } catch (error) {
     console.error('Error logging habit:', error);
-    await ctx.answerCbQuery('Error logging habit.');
+    await ctx.answerCbQuery(getMessage(ctx, 'log_errorLoggingHabit'));
   }
 }

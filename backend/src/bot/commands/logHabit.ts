@@ -1,5 +1,6 @@
 import { Context } from 'telegraf';
 import { database } from '../../database';
+import { getMessage, getUnableToIdentifyUser, getPleaseUseStartFirst } from '../i18n';
 
 function capitalizeFirstLetter(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -9,13 +10,13 @@ export async function logHabitCommand(ctx: Context) {
   const telegramId = ctx.from?.id;
 
   if (!telegramId) {
-    return ctx.reply('Unable to identify user.');
+    return ctx.reply(getUnableToIdentifyUser(ctx));
   }
 
   const user = await database.users.findOne({ telegramId });
 
   if (!user || !user._id) {
-    return ctx.reply('Please use /start first to register.');
+    return ctx.reply(getPleaseUseStartFirst(ctx));
   }
 
   // Get enabled habits
@@ -25,7 +26,7 @@ export async function logHabitCommand(ctx: Context) {
   }).toArray();
 
   if (habits.length === 0) {
-    return ctx.reply('You don\'t have any active habits. Use /add_habit to create one!');
+    return ctx.reply(getMessage(ctx, 'logHabit_noActiveHabits'));
   }
 
   // Create inline keyboard with habit buttons
@@ -38,7 +39,7 @@ export async function logHabitCommand(ctx: Context) {
     ]),
   };
 
-  await ctx.reply('Select a habit to log:', {
+  await ctx.reply(getMessage(ctx, 'logHabit_selectToLog'), {
     reply_markup: keyboard,
   });
 }

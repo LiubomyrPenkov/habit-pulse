@@ -2,6 +2,7 @@ import { Context } from 'telegraf';
 import { ObjectId } from 'mongodb';
 import { database } from '../../database';
 import { getPendingHabitLog, clearPendingHabitLog } from './logHabitCallback';
+import { getMessage, getUserNotFound, getHabitNotFound } from '../i18n';
 
 export async function handleCustomDateInput(ctx: Context) {
   const telegramId = ctx.from?.id;
@@ -19,12 +20,12 @@ export async function handleCustomDateInput(ctx: Context) {
 
   if (dateText.toLowerCase() === 'cancel') {
     clearPendingHabitLog(telegramId);
-    return ctx.reply('Cancelled. Use /log_habit to try again.');
+    return ctx.reply(getMessage(ctx, 'log_cancelled'));
   }
 
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.reply('User not found.');
+    return ctx.reply(getUserNotFound(ctx));
   }
 
   try {
@@ -35,7 +36,7 @@ export async function handleCustomDateInput(ctx: Context) {
 
     if (!habit) {
       clearPendingHabitLog(telegramId);
-      return ctx.reply('Habit not found.');
+      return ctx.reply(getHabitNotFound(ctx));
     }
 
     // Parse date in DD.MM.YYYY format
@@ -43,9 +44,7 @@ export async function handleCustomDateInput(ctx: Context) {
     const match = dateText.match(datePattern);
 
     if (!match) {
-      return ctx.reply(
-        'Invalid date format. Please use DD.MM.YYYY (e.g., 01.02.2026)\n\nOr send "cancel" to go back.'
-      );
+      return ctx.reply(getMessage(ctx, 'log_invalidDateFormat'));
     }
 
     const day = parseInt(match[1]);
@@ -61,18 +60,14 @@ export async function handleCustomDateInput(ctx: Context) {
       logDate.getUTCMonth() !== month ||
       logDate.getUTCFullYear() !== year
     ) {
-      return ctx.reply(
-        'Invalid date. Please check and try again.\n\nFormat: DD.MM.YYYY (e.g., 01.02.2026)\n\nOr send "cancel" to go back.'
-      );
+      return ctx.reply(getMessage(ctx, 'log_invalidDateCheck'));
     }
 
     // Check if date is not in the future
     const today = new Date();
     today.setUTCHours(23, 59, 59, 999);
     if (logDate > today) {
-      return ctx.reply(
-        'You cannot log for a future date. Please enter a date from today or earlier.\n\nOr send "cancel" to go back.'
-      );
+      return ctx.reply(getMessage(ctx, 'log_cannotLogFutureDate'));
     }
 
     // Check if already logged for that date
@@ -90,9 +85,7 @@ export async function handleCustomDateInput(ctx: Context) {
 
     if (existingLog) {
       clearPendingHabitLog(telegramId);
-        return ctx.reply(
-          `⚠️ "${habit.name}" was already logged for ${dateText}.\n\nUse /log_habit to log another habit.`
-        );
+      return ctx.reply(getMessage(ctx, 'log_alreadyLoggedForDate', { habitName: habit.name, date: dateText }));
     }
 
     // Create log entry
@@ -105,12 +98,10 @@ export async function handleCustomDateInput(ctx: Context) {
 
     clearPendingHabitLog(telegramId);
 
-    await ctx.reply(
-      `✅ Logged "${habit.name}" for ${dateText}!\n\nGreat job staying consistent! 💪\n\nUse /log_habit to log another habit or /stats to see your progress.`
-    );
+    await ctx.reply(getMessage(ctx, 'log_loggedForDateMessage', { habitName: habit.name, date: dateText }));
   } catch (error) {
     console.error('Error logging habit with custom date:', error);
     clearPendingHabitLog(telegramId);
-    await ctx.reply('Error logging habit. Please try again.');
+    await ctx.reply(getMessage(ctx, 'log_errorLoggingTryAgain'));
   }
 }

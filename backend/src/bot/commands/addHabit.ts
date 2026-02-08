@@ -1,5 +1,6 @@
 import { Context } from 'telegraf';
 import { database } from '../../database';
+import { getMessage, getUnableToIdentifyUser, getPleaseUseStartFirst } from '../i18n';
 
 const awaitingHabitName = new Set<number>();
 const awaitingTargetMonth = new Map<number, string>(); // telegramId -> habitName
@@ -33,16 +34,16 @@ export async function addHabitCommand(ctx: Context) {
   const telegramId = ctx.from?.id;
 
   if (!telegramId) {
-    return ctx.reply('Unable to identify user.');
+    return ctx.reply(getUnableToIdentifyUser(ctx));
   }
 
   const user = await database.users.findOne({ telegramId });
 
   if (!user) {
-    return ctx.reply('Please use /start first to register.');
+    return ctx.reply(getPleaseUseStartFirst(ctx));
   }
 
-  await ctx.reply('Please enter the name of the habit you want to track:');
+  await ctx.reply(getMessage(ctx, 'addHabit_enterName'));
 
   // Set up a listener for the next message
   markAwaitingHabitName(telegramId);
@@ -62,7 +63,7 @@ export async function handleHabitNameInput(ctx: Context) {
   const user = await database.users.findOne({ telegramId });
 
   if (!user || !user._id) {
-    return ctx.reply('Please use /start first to register.');
+    return ctx.reply(getPleaseUseStartFirst(ctx));
   }
 
   // Check if habit already exists (case-insensitive)
@@ -73,16 +74,14 @@ export async function handleHabitNameInput(ctx: Context) {
 
   if (existingHabit) {
     clearAwaitingHabitName(telegramId);
-    return ctx.reply(`You already have a habit named "${habitName}". Please choose a different name.`);
+    return ctx.reply(getMessage(ctx, 'addHabit_habitAlreadyExists', { habitName }));
   }
 
   // Clear habit name awaiting and ask for monthly target
   clearAwaitingHabitName(telegramId);
   awaitingTargetMonth.set(telegramId, habitName);
 
-  await ctx.reply(
-    `Great! Now set a monthly target for "${habitName}".\n\nHow many times per month do you want to do this habit?\n\nSend a number (e.g., 20) or "skip" to set no target.`
-  );
+  await ctx.reply(getMessage(ctx, 'addHabit_setMonthlyTarget', { habitName }));
 }
 
 export async function handleTargetMonthInput(ctx: Context) {
@@ -106,7 +105,7 @@ export async function handleTargetMonthInput(ctx: Context) {
   } else {
     const target = parseInt(input);
     if (isNaN(target) || target <= 0) {
-      return ctx.reply('Please enter a valid positive number or "skip".');
+      return ctx.reply(getMessage(ctx, 'addHabit_validNumberOrSkip'));
     }
     targetPerMonth = target;
   }
@@ -115,9 +114,7 @@ export async function handleTargetMonthInput(ctx: Context) {
   awaitingTargetMonth.delete(telegramId);
   awaitingTargetYear.set(telegramId, { name: habitName, targetPerMonth });
 
-  await ctx.reply(
-    `Now set a yearly target for "${habitName}".\n\nHow many times per year do you want to do this habit?\n\nSend a number (e.g., 200) or "skip" to set no target.`
-  );
+  await ctx.reply(getMessage(ctx, 'addHabit_setYearlyTarget', { habitName }));
 }
 
 export async function handleTargetYearInput(ctx: Context) {
@@ -136,7 +133,7 @@ export async function handleTargetYearInput(ctx: Context) {
 
   const user = await database.users.findOne({ telegramId });
   if (!user || !user._id) {
-    return ctx.reply('Please use /start first to register.');
+    return ctx.reply(getPleaseUseStartFirst(ctx));
   }
 
   let targetPerYear: number | undefined;
@@ -146,7 +143,7 @@ export async function handleTargetYearInput(ctx: Context) {
   } else {
     const target = parseInt(input);
     if (isNaN(target) || target <= 0) {
-      return ctx.reply('Please enter a valid positive number or "skip".');
+      return ctx.reply(getMessage(ctx, 'addHabit_validNumberOrSkip'));
     }
     targetPerYear = target;
   }
@@ -167,13 +164,11 @@ export async function handleTargetYearInput(ctx: Context) {
 
   let targetMsg = '';
   if (habitData.targetPerMonth) {
-    targetMsg += `\n📊 Monthly target: ${habitData.targetPerMonth}`;
+    targetMsg += getMessage(ctx, 'addHabit_targetMonthly') + habitData.targetPerMonth;
   }
   if (targetPerYear) {
-    targetMsg += `\n📊 Yearly target: ${targetPerYear}`;
+    targetMsg += getMessage(ctx, 'addHabit_targetYearly') + targetPerYear;
   }
 
-  await ctx.reply(
-    `✅ Habit "${habitData.name}" created successfully!${targetMsg}\n\nYou can now log it with /log_habit`
-  );
+  await ctx.reply(getMessage(ctx, 'addHabit_habitCreated', { habitName: habitData.name, targetMsg }));
 }

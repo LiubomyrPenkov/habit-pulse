@@ -1,6 +1,6 @@
 import { Context } from 'telegraf';
-import { ObjectId } from 'mongodb';
 import { database } from '../../database';
+import { getMessage, getUserNotFound } from '../i18n';
 
 const awaitingHabitLog = new Set<number>();
 
@@ -27,7 +27,7 @@ export async function handleLogHabitText(ctx: Context) {
   const user = await database.users.findOne({ telegramId });
 
   if (!user || !user._id) {
-    await ctx.reply('User not found.');
+    await ctx.reply(getUserNotFound(ctx));
     clearAwaitingHabitLog(telegramId);
     return;
   }
@@ -41,7 +41,7 @@ export async function handleLogHabitText(ctx: Context) {
     });
 
     if (!habit) {
-      await ctx.reply(`Habit "${habitName}" not found.`);
+      await ctx.reply(getMessage(ctx, 'log_habitNotFoundName', { habitName }));
       clearAwaitingHabitLog(telegramId);
       return;
     }
@@ -63,7 +63,7 @@ export async function handleLogHabitText(ctx: Context) {
     });
 
     if (existingLog) {
-          await ctx.reply(`⚠️ "${habitName}" was already logged today.`);
+      await ctx.reply(getMessage(ctx, 'log_alreadyLoggedTodayInline', { habitName }));
       clearAwaitingHabitLog(telegramId);
       return;
     }
@@ -76,14 +76,12 @@ export async function handleLogHabitText(ctx: Context) {
       createdAt: new Date(),
     });
 
-    await ctx.reply(
-      `✅ Logged "${habitName}" for today!\n\nGreat job staying consistent! 💪\n\nUse /log_habit to log another habit or /stats to see your progress.`
-    );
+    await ctx.reply(getMessage(ctx, 'log_loggedForTodayMessage', { habitName }));
 
     clearAwaitingHabitLog(telegramId);
   } catch (error) {
     console.error('Error logging habit:', error);
-    await ctx.reply('Error logging habit.');
+    await ctx.reply(getMessage(ctx, 'log_errorLoggingHabit'));
     clearAwaitingHabitLog(telegramId);
   }
 }
